@@ -2,7 +2,7 @@ name: Parse HH Jobs
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Каждый день в 08:00 UTC (11:00 МСК)
+    - cron: '0 6 * * *'  # Каждый день в 08:00 UTC (11:00 МСК)
   workflow_dispatch:      # Ручной запуск
 
 jobs:
