@@ -1,0 +1,36 @@
+name: Parse HH Jobs
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Каждый день в 08:00 UTC (11:00 МСК)
+  workflow_dispatch:      # Ручной запуск
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Setup Python
+      uses: actions/supabase-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: 🚀 Run Parser
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        echo "Начинаем парсинг..."
+        python scripts/parser.py
+    
+    - name: ✅ Completion
+      run: |
+        echo "Парсинг завершен!"
+        echo "Данные сохранены в Supabase"
