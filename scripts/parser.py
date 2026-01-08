@@ -33,6 +33,14 @@ def get_all_industries() -> List[Dict]:
     print(f"   Найдено {len(data)} индустрий.")
     return data
 
+def calculate_net_salary(salary_value: Optional[int], gross: Optional[bool]) -> Optional[int]:
+    """Рассчитывает зарплату 'на руки' в рублях."""
+    if salary_value is None:
+        return None
+    if gross is True:
+        return int(salary_value * 0.87)
+    return salary_value
+
 def format_vacancy(vacancy: Dict, city_slug: str) -> Dict:
     """Форматирует вакансию для базы."""
     try:
@@ -49,10 +57,16 @@ def format_vacancy(vacancy: Dict, city_slug: str) -> Dict:
             currency = salary.get("currency")
             gross = salary.get("gross")
         
+        # Рассчитываем net-зарплаты (только для RUR)
+        salary_from_net = calculate_net_salary(salary_from, gross) if currency == "RUR" else None
+        salary_to_net = calculate_net_salary(salary_to, gross) if currency == "RUR" else None
+        
+        # Период и частота выплат
         salary_range = vacancy.get('salary_range', {})
         mode = salary_range.get('mode', {}) if isinstance(salary_range, dict) else {}
         frequency = salary_range.get('frequency', {}) if isinstance(salary_range, dict) else {}
         
+        # График работы
         schedule = vacancy.get('schedule', {})
         
         work_schedule_by_days = None
@@ -65,41 +79,56 @@ def format_vacancy(vacancy: Dict, city_slug: str) -> Dict:
             if vacancy['working_hours']:
                 working_hours = vacancy['working_hours'][0].get('name')
         
+        # Работодатель
         employer = vacancy.get('employer', {})
         
         return {
+            # Базовые поля
             "external_id": str(vacancy.get("id", "")),
             "source": "hh",
             "title": vacancy.get("name", ""),
             "employer": employer.get("name", "") if isinstance(employer, dict) else "",
             "employer_trusted": employer.get("trusted") if isinstance(employer, dict) else None,
             
+            # Зарплата оригинальная
             "salary_from": salary_from,
             "salary_to": salary_to,
             "currency": currency,
             "gross": gross,
             
+            # Зарплата net
+            "salary_from_net": salary_from_net,
+            "salary_to_net": salary_to_net,
+            
+            # Период и частота выплат
             "salary_period_id": mode.get('id') if isinstance(mode, dict) else None,
             "salary_period_name": mode.get('name') if isinstance(mode, dict) else None,
             "salary_frequency_id": frequency.get('id') if isinstance(frequency, dict) else None,
             "salary_frequency_name": frequency.get('name') if isinstance(frequency, dict) else None,
             
+            # График работы
             "schedule_name": schedule.get('name') if isinstance(schedule, dict) else None,
             "work_schedule_by_days": work_schedule_by_days,
             "working_hours": working_hours,
             
+            # Опыт и занятость
             "experience_name": vacancy.get('experience', {}).get('name') if isinstance(vacancy.get('experience'), dict) else None,
             "employment_form_name": vacancy.get('employment_form', {}).get('name') if isinstance(vacancy.get('employment_form'), dict) else None,
             
+            # Локация
             "city": vacancy.get("area", {}).get("name", "") if isinstance(vacancy.get('area'), dict) else "",
             "city_slug": city_slug,
             "channel_id": CITIES.get(city_slug, {}).get("channel", ""),
             
+            # Временные метки
             "published_at": vacancy.get("published_at", ""),
+            
+            # Ссылки
             "external_url": vacancy.get("alternate_url", ""),
         }
     
     except Exception as e:
+        # Минимальные данные при ошибке
         return {
             "external_id": str(vacancy.get("id", "")),
             "source": "hh",
