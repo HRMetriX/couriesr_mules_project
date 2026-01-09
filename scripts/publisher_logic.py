@@ -161,9 +161,9 @@ def get_vacancies_for_publication(
         .gte("created_at", max_parsed_date.isoformat())
     )
     
-    # Сортировка: сначала вакансии с зарплатой (от высокой к низкой),
-    # потом без зарплаты, все по свежести
-    query = query.order("salary_to_net", desc=True, nulls_last=True)
+    # ВАЖНО: Для версии supabase 1.1.1 параметр nulls_last не поддерживается
+    # Используем альтернативный подход
+    query = query.order("salary_to_net", desc=True)
     query = query.order("published_at", desc=True)
     
     # Лимит
@@ -173,7 +173,30 @@ def get_vacancies_for_publication(
     try:
         response = query.execute()
         logger.info(f"Найдено {len(response.data)} вакансий для {city_slug}")
+        
+        # Вручную сортируем, чтобы вакансии без зарплаты были в конце
+        if response.data:
+            # Разделяем на вакансии с зарплатой и без
+            with_salary = []
+            without_salary = []
+            
+            for vacancy in response.data:
+                if vacancy.get("salary_to_net") is not None:
+                    with_salary.append(vacancy)
+                else:
+                    without_salary.append(vacancy)
+            
+            # Сортируем вакансии с зарплатой по убыванию
+            with_salary.sort(key=lambda x: x.get("salary_to_net", 0), reverse=True)
+            
+            # Объединяем: сначала с зарплатой, потом без
+            sorted_vacancies = with_salary + without_salary
+            
+            # Ограничиваем лимитом
+            return sorted_vacancies[:limit]
+        
         return response.data if response.data else []
+        
     except Exception as e:
         logger.error(f"Ошибка при запросе вакансий для {city_slug}: {str(e)}")
         return []
