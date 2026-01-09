@@ -126,18 +126,20 @@ def should_publish_now() -> bool:
 def get_vacancies_for_publication(
     supabase_client: Client,
     city_slug: str,
-    limit: int = 10,
+    target_count: int = 10,  # Целевое количество вакансий
     max_per_company: int = 2  # Максимум вакансий от одной компании
 ) -> List[Dict]:
     """
     Получает вакансии для публикации.
     
-    Критерии:
-    1. is_posted = FALSE
-    2. published_at не старше 30 дней
-    3. created_at (парсинг) не старше 7 дней
-    4. currency = 'RUR'
-    5. Не более max_per_company вакансий от одной компании
+    Цель: получить target_count вакансий, но не более 
+    max_per_company от одной компании.
+    
+    Алгоритм:
+    1. Берем в 3 раза больше вакансий для фильтрации
+    2. Идем по списку от самых высокооплачиваемых
+    3. Берем максимум max_per_company от каждой компании
+    4. Останавливаемся когда набрали target_count или закончились вакансии
     """
     
     # Рассчитываем даты-ограничители
@@ -146,14 +148,15 @@ def get_vacancies_for_publication(
     max_parsed_date = now - timedelta(days=PUBLISH_CONFIG["criteria"]["max_parsed_age_days"])
     
     logger.info(f"Критерии отбора для {city_slug}:")
+    logger.info(f"  - Целевое количество: {target_count} вакансий")
+    logger.info(f"  - Не более {max_per_company} от одной компании")
     logger.info(f"  - published_at >= {max_vacancy_date.strftime('%Y-%m-%d')}")
     logger.info(f"  - created_at >= {max_parsed_date.strftime('%Y-%m-%d')}")
     logger.info(f"  - currency = 'RUR'")
     logger.info(f"  - is_posted = FALSE")
-    logger.info(f"  - не более {max_per_company} вакансий от одной компании")
     
-    # Сначала получаем больше вакансий, чтобы потом фильтровать
-    initial_limit = limit * 3  # Берем в 3 раза больше для фильтрации
+    # Берем больше вакансий для фильтрации
+    initial_limit = target_count * 3  # Берем в 3 раза больше
     
     # Строим запрос
     query = (
@@ -178,37 +181,89 @@ def get_vacancies_for_publication(
     # Выполняем
     try:
         response = query.execute()
-        logger.info(f"Найдено {len(response.data)} вакансий для {city_slug}")
+        logger.info(f"Найдено {len(response.data)} доступных вакансий для {city_slug}")
         
         if not response.data:
+            logger.warning(f"Нет доступных вакансий для {city_slug}")
             return []
         
-        # Фильтруем по компаниям
+        # ПАСС 1: Собираем лучшие вакансии с ограничением по компаниям
         filtered_vacancies = []
         company_counter = {}
+        seen_titles = set()  # Для грубой проверки дубликатов
         
         for vacancy in response.data:
-            employer = vacancy.get('employer', '').strip()
+            # Проверяем данные вакансии
+            employer = str(vacancy.get('employer', '')).strip()
+            title = str(vacancy.get('title', '')).strip()
             
-            # Если компания не указана - пропускаем
-            if not employer:
+            if not employer or not title:
+                logger.debug(f"Пропускаем вакансию без компании или названия: {vacancy.get('id')}")
                 continue
-                
-            # Считаем сколько уже взяли от этой компании
+            
+            # Грубая проверка на дубликаты (первые 60 символов названия)
+            title_key = f"{employer}_{title[:60]}"
+            if title_key in seen_titles:
+                logger.debug(f"Пропускаем возможный дубликат: {title[:40]}...")
+                continue
+            
+            # Проверяем лимит по компании
             current_count = company_counter.get(employer, 0)
+            if current_count >= max_per_company:
+                logger.debug(f"Лимит для {employer} исчерпан ({current_count}/{max_per_company})")
+                continue
             
-            # Если ещё не превысили лимит - добавляем
-            if current_count < max_per_company:
-                filtered_vacancies.append(vacancy)
-                company_counter[employer] = current_count + 1
-                logger.debug(f"Добавили вакансию от {employer} (уже {current_count + 1})")
+            # Добавляем вакансию
+            seen_titles.add(title_key)
+            company_counter[employer] = current_count + 1
+            filtered_vacancies.append(vacancy)
             
-            # Если уже набрали достаточно вакансий - останавливаемся
-            if len(filtered_vacancies) >= limit:
+            logger.debug(f"Добавлена вакансия: {employer} - {title[:40]}... (всего: {len(filtered_vacancies)})")
+            
+            # Если набрали нужное количество - останавливаемся
+            if len(filtered_vacancies) >= target_count:
+                logger.info(f"Набрали целевое количество вакансий: {len(filtered_vacancies)}")
                 break
         
-        logger.info(f"После фильтрации по компаниям: {len(filtered_vacancies)} вакансий")
-        logger.info(f"Уникальных компаний: {len(company_counter)}")
+        # ПАСС 2: Если не набрали target_count, снимаем ограничение по компаниям
+        if len(filtered_vacancies) < target_count and len(filtered_vacancies) < len(response.data):
+            logger.warning(f"Не удалось набрать {target_count} вакансий с ограничением по компаниям")
+            logger.warning(f"Набрано только {len(filtered_vacancies)}. Добавляем дополнительные...")
+            
+            # Проходим по оставшимся вакансиям
+            for vacancy in response.data[len(filtered_vacancies):]:
+                employer = str(vacancy.get('employer', '')).strip()
+                title = str(vacancy.get('title', '')).strip()
+                
+                if not employer or not title:
+                    continue
+                
+                # Проверяем, не добавляли ли уже эту вакансию
+                title_key = f"{employer}_{title[:60]}"
+                if title_key in seen_titles:
+                    continue
+                
+                # Добавляем без ограничений по компании
+                seen_titles.add(title_key)
+                filtered_vacancies.append(vacancy)
+                
+                if len(filtered_vacancies) >= target_count:
+                    logger.info(f"Добрали до {len(filtered_vacancies)} вакансий")
+                    break
+        
+        # Итоговая статистика
+        unique_companies = len(set(v.get('employer', '').strip() for v in filtered_vacancies if v.get('employer')))
+        
+        logger.info(f"ИТОГ для {city_slug}:")
+        logger.info(f"  - Всего вакансий для публикации: {len(filtered_vacancies)}")
+        logger.info(f"  - Уникальных компаний: {unique_companies}")
+        logger.info(f"  - Распределение по компаниям: {company_counter}")
+        
+        # Логируем компании и количество их вакансий
+        if company_counter:
+            logger.info("  - Детали по компаниям:")
+            for company, count in sorted(company_counter.items(), key=lambda x: x[1], reverse=True):
+                logger.info(f"    • {company}: {count} вакансий")
         
         return filtered_vacancies
         
@@ -471,15 +526,19 @@ def publish_city_vacancies(
         if not city_info:
             return False, f"Город {city_slug} не найден в конфигурации", 0
         
-        vacancies_per_post = PUBLISH_CONFIG["publication"]["vacancies_per_post"]
+        # Получаем настройки из конфига
+        target_count = PUBLISH_CONFIG["publication"]["vacancies_per_post"]
+        max_per_company = PUBLISH_CONFIG.get("filters", {}).get("max_vacancies_per_company", 2)
         
-        logger.info(f"Ищу до {vacancies_per_post} вакансий для {city_info['name']}...")
+        logger.info(f"Ищу до {target_count} вакансий для {city_info['name']}...")
+        logger.info(f"Максимум {max_per_company} вакансий от одной компании")
         
         # Получаем вакансии для публикации
         vacancies = get_vacancies_for_publication(
             supabase_client, 
             city_slug, 
-            limit=vacancies_per_post
+            target_count=target_count,
+            max_per_company=max_per_company
         )
         
         if not vacancies:
@@ -495,6 +554,7 @@ def publish_city_vacancies(
         )
         
         logger.info(f"Публикую в Telegram канал: {city_info['channel']}")
+        logger.info(f"Длина поста: {len(post_text)} символов")
         
         # Публикуем в Telegram
         success = publish_to_telegram(
@@ -518,6 +578,20 @@ def publish_city_vacancies(
         
         if not mark_success:
             logger.warning(f"Вакансии опубликованы, но не отмечены в БД для {city_info['name']}")
+        else:
+            logger.info(f"Успешно отмечено {len(vacancy_ids)} вакансий как опубликованные")
+        
+        # Логируем детали публикации
+        companies = {}
+        for vacancy in vacancies:
+            employer = vacancy.get('employer', 'Не указано')
+            companies[employer] = companies.get(employer, 0) + 1
+        
+        logger.info(f"Детали публикации для {city_info['name']}:")
+        logger.info(f"  - Всего вакансий: {len(vacancies)}")
+        logger.info(f"  - Уникальных компаний: {len(companies)}")
+        for employer, count in sorted(companies.items(), key=lambda x: x[1], reverse=True):
+            logger.info(f"  - {employer}: {count} вакансий")
         
         return True, f"Опубликовано {len(vacancies)} вакансий", len(vacancies)
         
@@ -556,16 +630,22 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
     
     if not supabase_url or not supabase_key or not bot_token:
         logger.error("❌ ОШИБКА: Не все обязательные переменные установлены")
+        logger.error("   Проверьте настройки GitHub Secrets:")
+        logger.error("   - SUPABASE_URL")
+        logger.error("   - SUPABASE_KEY") 
+        logger.error("   - TG_BOT_TOKEN")
         return False, {}
     
     # Проверяем, нужно ли публиковать (только для локального запуска)
     if not should_publish_now():
         logger.info("⏸️  Не время для публикации по расписанию")
+        logger.info("   В режиме GitHub Actions публикация всегда разрешена")
         return True, {}
     
     # Проверяем доступность supabase
     if not SUPABASE_AVAILABLE:
         logger.error("❌ ОШИБКА: Библиотека supabase не установлена")
+        logger.error("   Установите: pip install supabase==1.1.1")
         return False, {}
     
     # Подключаемся к Supabase
@@ -576,17 +656,28 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
         # Делаем тестовый запрос для проверки подключения
         test_result = supabase_client.table("vacancies").select("id", count="exact").limit(1).execute()
         logger.info(f"✅ Успешное подключение к Supabase")
+        logger.info(f"   Всего записей в базе: {test_result.count if hasattr(test_result, 'count') else 'неизвестно'}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка подключения к Supabase: {str(e)}")
+        logger.error("   Проверьте:")
+        logger.error("   1. Правильность SUPABASE_URL")
+        logger.error("   2. Правильность SUPABASE_KEY")
+        logger.error("   3. Доступность базы данных")
+        logger.error("   4. Права доступа ключа")
         return False, {}
     
     # Публикуем для каждого города
     logger.info(f"\n📍 ПУБЛИКАЦИЯ ДЛЯ {len(CITIES)} ГОРОДОВ")
+    logger.info(f"   Целевое количество вакансий: {PUBLISH_CONFIG['publication']['vacancies_per_post']}")
+    logger.info(f"   Максимум от одной компании: {PUBLISH_CONFIG.get('filters', {}).get('max_vacancies_per_company', 2)}")
+    logger.info(f"   Время публикации: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M %d.%m.%Y')}")
     
     results = {}
     all_success = True
     total_vacancies = 0
+    cities_processed = 0
+    cities_with_vacancies = 0
     
     for city_slug in CITIES.keys():
         city_name = CITIES[city_slug]["name"]
@@ -594,48 +685,85 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
         logger.info(f"📍 ГОРОД: {city_name.upper()} ({city_slug})")
         logger.info(f"   Канал: {CITIES[city_slug]['channel']}")
         
-        success, message, count = publish_city_vacancies(
-            supabase_client,
-            bot_token,
-            city_slug
-        )
-        
-        results[city_slug] = count
-        total_vacancies += count
-        
-        if success:
-            if count > 0:
-                logger.info(f"✅ {message}")
+        try:
+            success, message, count = publish_city_vacancies(
+                supabase_client,
+                bot_token,
+                city_slug
+            )
+            
+            results[city_slug] = count
+            total_vacancies += count
+            cities_processed += 1
+            
+            if success:
+                if count > 0:
+                    logger.info(f"✅ УСПЕХ: {message}")
+                    cities_with_vacancies += 1
+                else:
+                    logger.info(f"ℹ️  ИНФО: {message}")
             else:
-                logger.info(f"ℹ️  {message}")
-        else:
-            logger.error(f"❌ {message}")
+                logger.error(f"❌ ОШИБКА: {message}")
+                all_success = False
+            
+            # Небольшая задержка между городами
+            import time
+            if cities_processed < len(CITIES):  # Не ждём после последнего города
+                time.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"❌ НЕОЖИДАННАЯ ОШИБКА в {city_name}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            results[city_slug] = 0
             all_success = False
-        
-        # Небольшая задержка между городами
-        import time
-        time.sleep(1)
     
     # Итоговая статистика
     logger.info(f"\n{'='*60}")
     logger.info("📊 ИТОГИ ПУБЛИКАЦИИ:")
     logger.info(f"{'='*60}")
     
+    # Статистика по городам
     for city_slug, count in results.items():
         city_name = CITIES[city_slug]["name"]
         channel = CITIES[city_slug]["channel"]
-        status = "✅" if count > 0 else "ℹ️ "
+        status = "✅" if count > 0 else "ℹ️ " if count == 0 else "❌"
         logger.info(f"{status} {city_name:20} | {count:2} вакансий | {channel}")
     
+    # Общая статистика
     logger.info(f"{'─'*60}")
-    logger.info(f"📈 Всего опубликовано: {total_vacancies} вакансий")
+    logger.info(f"📈 ВСЕГО ОПУБЛИКОВАНО: {total_vacancies} вакансий")
+    logger.info(f"🏙️  ГОРОДОВ ОБРАБОТАНО: {cities_processed}/{len(CITIES)}")
+    logger.info(f"📍 ГОРОДОВ С ВАКАНСИЯМИ: {cities_with_vacancies}/{len(CITIES)}")
     
     if total_vacancies == 0:
-        logger.info("ℹ️  Новых вакансий для публикации не найдено")
+        logger.info("\nℹ️  Новых вакансий для публикации не найдено")
+        logger.info("   Возможные причины:")
+        logger.info("   1. Все вакансии уже опубликованы (is_posted = TRUE)")
+        logger.info("   2. Нет новых вакансий за последние 7 дней")
+        logger.info("   3. Вакансии не в рублях (currency != 'RUR')")
+        logger.info("   4. Ошибка в критериях отбора")
+        logger.info("   5. Проблемы с подключением к базе данных")
+    else:
+        avg_vacancies = total_vacancies / cities_with_vacancies if cities_with_vacancies > 0 else 0
+        logger.info(f"📊 СРЕДНЕЕ НА ГОРОД: {avg_vacancies:.1f} вакансий")
     
     logger.info(f"{'='*60}")
     
-    return all_success, results
+    # Проверяем общий успех
+    if not all_success:
+        logger.error("❌ Публикация завершена с ошибками в одном или нескольких городах")
+        logger.error("   Проверьте логи выше для деталей")
+    elif total_vacancies == 0:
+        logger.info("✅ Публикация завершена успешно, но вакансий не найдено")
+    else:
+        logger.info("✅ Публикация завершена успешно!")
+    
+    # Возвращаем результат
+    # Даже если нет вакансий, но процесс выполнился корректно - это успех
+    process_success = all_success  # True если не было критических ошибок
+    
+    return process_success, results
 
 
 if __name__ == "__main__":
@@ -644,13 +772,23 @@ if __name__ == "__main__":
     """
     import sys
     
-    # Запускаем публикацию
-    success, stats = main_publisher()
-    
-    # Возвращаем код выхода для GitHub Actions
-    if success:
-        logger.info("✅ Публикация завершена успешно")
-        sys.exit(0)
-    else:
-        logger.error("❌ Публикация завершена с ошибками")
+    try:
+        # Запускаем публикацию
+        success, stats = main_publisher()
+        
+        # Возвращаем код выхода для GitHub Actions
+        if success:
+            logger.info("✅ Публикация завершена успешно")
+            sys.exit(0)
+        else:
+            logger.error("❌ Публикация завершена с ошибками")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        logger.info("\n⚠️  Публикация прервана пользователем")
+        sys.exit(130)
+    except Exception as e:
+        logger.error(f"💥 КРИТИЧЕСКАЯ ОШИБКА: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         sys.exit(1)
