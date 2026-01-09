@@ -394,12 +394,17 @@ def should_publish_now() -> bool:
     """
     # Для GitHub Actions всегда публикуем
     if "GITHUB_ACTIONS" in os.environ:
+        logger.info("📱 Режим GitHub Actions - публикация разрешена")
         return True
     
     # Для локального тестирования проверяем время
     try:
         post_times = PUBLISH_CONFIG["publication"]["post_times_msk"]
         now_msk = datetime.now(timezone(timedelta(hours=3)))
+        current_time = now_msk.strftime("%H:%M")
+        
+        logger.info(f"⏰ Текущее время (Мск): {current_time}")
+        logger.info(f"⏰ Время публикации по расписанию: {', '.join(post_times)}")
         
         for scheduled_time in post_times:
             try:
@@ -409,13 +414,18 @@ def should_publish_now() -> bool:
                 time_diff = abs((now_msk - scheduled_dt).total_seconds() / 60)
                 
                 if time_diff <= 10:  # +-10 минут
+                    logger.info(f"✅ Время для публикации! (+/-10 минут от {scheduled_time})")
                     return True
             except (ValueError, AttributeError):
                 continue
+        
+        logger.info("⏸️  Не время для публикации по расписанию")
+        return False
+        
     except Exception as e:
-        logger.warning(f"Ошибка проверки времени: {e}")
-    
-    return False
+        logger.warning(f"⚠️  Ошибка проверки времени: {e}")
+        # В случае ошибки - разрешаем публикацию
+        return True
 
 
 def main_publisher() -> Tuple[bool, Dict[str, int]]:
@@ -428,43 +438,82 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
     """
     # Получаем конфигурацию из переменных окружения
     supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+    supabase_key = os.environ.get("SUPABASE_KEY")  # Используем SUPABASE_KEY
     bot_token = os.environ.get("TG_BOT_TOKEN")
     
+    # Подробное логирование переменных окружения
+    logger.info("=" * 60)
+    logger.info("ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
+    logger.info(f"SUPABASE_URL: {'*** УСТАНОВЛЕНА ***' if supabase_url else '❌ ОТСУТСТВУЕТ'}")
+    logger.info(f"SUPABASE_KEY: {'*** УСТАНОВЛЕНА ***' if supabase_key else '❌ ОТСУТСТВУЕТ'}")
+    logger.info(f"TG_BOT_TOKEN: {'*** УСТАНОВЛЕНА ***' if bot_token else '❌ ОТСУТСТВУЕТ'}")
+    
+    # Выводим список всех переменных окружения для отладки
+    logger.info("\nВСЕ ПЕРЕМЕННЫЕ С 'SUPABASE' ИЛИ 'TG':")
+    for key in sorted(os.environ.keys()):
+        if "SUPABASE" in key.upper() or "TG_" in key.upper():
+            value = os.environ[key]
+            masked_value = '***' + value[-4:] if value and ('KEY' in key or 'TOKEN' in key) else value
+            logger.info(f"  {key}: {masked_value}")
+    logger.info("=" * 60)
+    
+    # Проверяем обязательные переменные
     if not supabase_url:
-        logger.error("Не установлена переменная SUPABASE_URL")
+        logger.error("❌ ОШИБКА: Не установлена переменная SUPABASE_URL")
+        logger.error("   Как исправить: добавьте SUPABASE_URL в GitHub Secrets")
         return False, {}
     
     if not supabase_key:
-        logger.error("Не установлена переменная SUPABASE_KEY или SUPABASE_SERVICE_ROLE_KEY")
+        logger.error("❌ ОШИБКА: Не установлена переменная SUPABASE_KEY")
+        logger.error("   Как исправить: добавьте SUPABASE_KEY в GitHub Secrets")
+        logger.error("   Проверьте имя переменной: должно быть 'SUPABASE_KEY', не 'SUPABASE_SERVICE_ROLE_KEY'")
         return False, {}
     
     if not bot_token:
-        logger.error("Не установлена переменная TG_BOT_TOKEN")
+        logger.error("❌ ОШИБКА: Не установлена переменная TG_BOT_TOKEN")
+        logger.error("   Как исправить: добавьте TG_BOT_TOKEN в GitHub Secrets")
         return False, {}
+    
+    logger.info("✅ Все необходимые переменные окружения установлены")
     
     # Проверяем, нужно ли публиковать (только для локального запуска)
     if not should_publish_now():
-        logger.info("Не время для публикации")
+        logger.info("⏸️  Не время для публикации по расписанию")
+        logger.info("   Запуск будет пропущен (в GitHub Actions всегда публикуем)")
         return True, {}
     
     # Подключаемся к Supabase
     try:
+        logger.info("\n🔗 Подключаюсь к Supabase...")
         supabase_client = create_client(supabase_url, supabase_key)
-        logger.info("Успешное подключение к Supabase")
+        
+        # Делаем тестовый запрос для проверки подключения
+        test_result = supabase_client.table("vacancies").select("id", count="exact").limit(1).execute()
+        logger.info(f"✅ Успешное подключение к Supabase")
+        logger.info(f"   Тестовый запрос: {test_result.count if hasattr(test_result, 'count') else 'OK'}")
+        
     except Exception as e:
-        logger.error(f"Ошибка подключения к Supabase: {str(e)}")
+        logger.error(f"❌ Ошибка подключения к Supabase: {str(e)}")
+        logger.error("   Проверьте:")
+        logger.error("   1. Правильность SUPABASE_URL")
+        logger.error("   2. Правильность SUPABASE_KEY")
+        logger.error("   3. Доступность базы данных")
+        logger.error("   4. Права доступа ключа")
         return False, {}
     
     # Публикуем для каждого города
+    logger.info(f"\n🚀 Начинаем публикацию для {len(CITIES)} городов")
+    logger.info(f"   Время публикации: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M %d.%m.%Y')}")
+    
     results = {}
     all_success = True
-    
-    logger.info(f"Начинаем публикацию для {len(CITIES)} городов")
+    total_vacancies = 0
     
     for city_slug in CITIES.keys():
-        logger.info(f"\n{'='*50}")
-        logger.info(f"Публикация вакансий для {city_slug.upper()}...")
+        city_name = CITIES[city_slug]["name"]
+        logger.info(f"\n{'='*60}")
+        logger.info(f"📍 ГОРОД: {city_name.upper()} ({city_slug})")
+        logger.info(f"   Канал: {CITIES[city_slug]['channel']}")
         
         success, message, count = publish_city_vacancies(
             supabase_client,
@@ -473,11 +522,15 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
         )
         
         results[city_slug] = count
+        total_vacancies += count
         
         if success:
-            logger.info(f"✅ {city_slug.upper()}: {message}")
+            if count > 0:
+                logger.info(f"✅ УСПЕХ: {message}")
+            else:
+                logger.info(f"ℹ️  ИНФО: {message}")
         else:
-            logger.error(f"❌ {city_slug.upper()}: {message}")
+            logger.error(f"❌ ОШИБКА: {message}")
             all_success = False
         
         # Небольшая задержка между городами
@@ -485,17 +538,31 @@ def main_publisher() -> Tuple[bool, Dict[str, int]]:
         time.sleep(1)
     
     # Итоговая статистика
-    logger.info(f"\n{'='*50}")
-    logger.info("ИТОГИ ПУБЛИКАЦИИ:")
-    total_vacancies = 0
+    logger.info(f"\n{'='*60}")
+    logger.info("📊 ИТОГИ ПУБЛИКАЦИИ:")
+    logger.info(f"{'='*60}")
+    
     for city_slug, count in results.items():
-        city_name = CITIES.get(city_slug, {}).get('name', city_slug)
-        logger.info(f"{city_name}: {count} вакансий")
-        total_vacancies += count
+        city_name = CITIES[city_slug]["name"]
+        channel = CITIES[city_slug]["channel"]
+        status = "✅" if count > 0 else "ℹ️ "
+        logger.info(f"{status} {city_name:20} | {count:2} вакансий | {channel}")
     
-    logger.info(f"Всего опубликовано: {total_vacancies} вакансий")
-    logger.info(f"{'='*50}")
+    logger.info(f"{'─'*60}")
+    logger.info(f"📈 Всего опубликовано: {total_vacancies} вакансий")
     
+    if total_vacancies == 0:
+        logger.info("ℹ️  Новых вакансий для публикации не найдено")
+        logger.info("   Возможные причины:")
+        logger.info("   1. Все вакансии уже опубликованы (is_posted = TRUE)")
+        logger.info("   2. Нет новых вакансий за последние 7 дней")
+        logger.info("   3. Вакансии не в рублях (currency != 'RUR')")
+        logger.info("   4. Ошибка в критериях отбора")
+    
+    logger.info(f"{'='*60}")
+    
+    # Даже если нет вакансий для публикации - это не ошибка
+    # Главное что процесс выполнился корректно
     return all_success, results
 
 
@@ -505,13 +572,19 @@ if __name__ == "__main__":
     """
     import sys
     
+    logger.info("\n" + "="*60)
+    logger.info("🚀 ЗАПУСК ПУБЛИКАТОРА ВАКАНСИЙ")
+    logger.info(f"   Дата: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
+    logger.info(f"   Режим: {'GitHub Actions' if 'GITHUB_ACTIONS' in os.environ else 'Локальный'}")
+    logger.info("="*60)
+    
     # Запускаем публикацию
     success, stats = main_publisher()
     
     # Возвращаем код выхода для GitHub Actions
     if success:
-        logger.info("Публикация завершена успешно")
+        logger.info("✅ Публикация завершена успешно")
         sys.exit(0)
     else:
-        logger.error("Публикация завершена с ошибками")
+        logger.error("❌ Публикация завершена с ошибками")
         sys.exit(1)
