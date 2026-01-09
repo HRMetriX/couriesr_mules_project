@@ -44,18 +44,22 @@ jobs:
         # Используем существующие зависимости
         pip install requests==2.31.0 supabase==1.1.1 python-dateutil==2.8.2
     
-    - name: Debug - Check environment
+    - name: Debug - Check project structure
       if: ${{ github.event_name == 'workflow_dispatch' }}
       run: |
-        echo "🔧 Отладочная информация:"
-        echo "Тиггер: ${{ github.event_name }}"
-        echo "Рабочая директория: $(pwd)"
+        echo "🔧 Проверка структуры проекта:"
+        echo "Текущая директория: $(pwd)"
         echo "Содержимое scripts/:"
         ls -la scripts/
         echo ""
-        echo "Python информация:"
-        python --version
-        pip list | grep -E "(supabase|requests)"
+        echo "Проверяем наличие publisher_config.py:"
+        if [ -f scripts/publisher_config.py ]; then
+          echo "✅ publisher_config.py найден"
+          echo "Первые 10 строк:"
+          head -10 scripts/publisher_config.py
+        else
+          echo "❌ publisher_config.py не найден"
+        fi
     
     - name: Run publisher
       env:
@@ -64,7 +68,7 @@ jobs:
         TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       run: |
         echo "🚀 Запуск публикатора..."
-        echo "Рабочая директория: $(pwd)"
+        echo "Тип триггера: ${{ github.event_name }}"
         python scripts/publisher_logic.py
     
     - name: Send notification on failure
