@@ -270,8 +270,8 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
     
     emojis = PUBLISH_CONFIG["formatting"]["emojis"]
     
-    # Заголовок поста
-    header = f"<b>🚀 Новые вакансии курьеров в {city_name}</b>\n\n"
+    # Исправляем заголовок: "в г. Казань" вместо "в Казань"
+    header = f"<b>🚀 Новые вакансии курьеров в г. {city_name}</b>\n\n"
     
     # Форматируем вакансии
     vacancy_sections = []
@@ -302,13 +302,18 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
     # Собираем пост
     post_text = header + "".join(vacancy_sections)
     
-    # Добавляем информацию о канале
-    footer = f"\n\n📢 <b>Подпишись на канал</b>, чтобы не пропустить новые вакансии!"
+    # Улучшенный CTA для реферальной ссылки
+    footer = f"\n\n💡 <b>Хочешь работать на себя?</b>\n"
+    footer += "• Персональный график\n"
+    footer += "• Работа рядом с домом\n"
+    footer += "• Бонусы для новичков\n"
+    footer += "• Выплаты ежедневно\n\n"
     
-    # Реферальная ссылка (опционально)
+    # Реферальная ссылка с сильным CTA
     referral_link = PUBLISH_CONFIG["formatting"].get("referral_link")
     if referral_link:
-        footer += f"\n\n💼 Ищешь работу? <a href='{referral_link}'>Посмотри все вакансии</a>"
+        footer += f"🚀 <b><a href='{referral_link}'>СТАТЬ КУРЬЕРОМ Яндекс.Про →</a></b>\n"
+        footer += f"<i>Начни зарабатывать уже завтра!</i>"
     
     post_text += footer
     
@@ -373,12 +378,12 @@ def publish_to_telegram(
     try:
         import requests
         
-        # Создаем кнопку, если есть ссылка
+        # Создаем кнопку с улучшенным текстом
         reply_markup = None
         if button_url:
             reply_markup = {
                 "inline_keyboard": [[
-                    {"text": "💼 Посмотреть все вакансии", "url": button_url}
+                    {"text": "🚀 Работать на себя", "url": button_url}
                 ]]
             }
         
@@ -388,7 +393,7 @@ def publish_to_telegram(
             "chat_id": channel_id,
             "text": post_text,
             "parse_mode": "HTML",
-            "disable_web_page_preview": True,
+            "disable_web_page_preview": False,  # Разрешаем превью для реферальной ссылки
         }
         
         if reply_markup:
