@@ -71,9 +71,20 @@ jobs:
         echo "Тип триггера: ${{ github.event_name }}"
         python scripts/publisher_logic.py
     
+    - name: Check if Slack webhook exists
+      id: check-slack
+      if: failure()
+      run: |
+        if [ -n "${{ secrets.SLACK_WEBHOOK }}" ]; then
+          echo "SLACK_WEBHOOK exists"
+          echo "has_slack=true" >> $GITHUB_OUTPUT
+        else
+          echo "SLACK_WEBHOOK not found"
+          echo "has_slack=false" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Send notification on failure
-      # Используем правильный синтаксис для проверки secrets
-      if: ${{ failure() && secrets.SLACK_WEBHOOK != '' }}
+      if: failure() && steps.check-slack.outputs.has_slack == 'true'
       uses: rtCamp/action-slack-notify@v2
       env:
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
