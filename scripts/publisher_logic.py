@@ -284,69 +284,72 @@ def format_publication_date(published_at: str) -> str:
 def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[str, Optional[str]]:
     """
     Форматирует пост с несколькими вакансиями.
-    
-    Возвращает:
-    - Текст поста
-    - Ссылка для кнопки (если есть реферальная ссылка)
     """
     if not vacancies:
         return "Нет новых вакансий для публикации", None
     
     emojis = PUBLISH_CONFIG["formatting"]["emojis"]
     
-    # Исправляем заголовок: "в г. Казань" вместо "в Казань"
+    # Заголовок поста
     header = f"<b>🚀 Новые вакансии курьеров в г. {city_name}</b>\n\n"
     
     # Форматируем вакансии
     vacancy_sections = []
     for i, vacancy in enumerate(vacancies, 1):
-        vacancy_text = f"<b>{i}. {vacancy['title']} в {vacancy['employer']}</b>\n\n"
+        # Ссылка в названии вакансии
+        vacancy_title = vacancy['title']
+        external_url = vacancy['external_url']
         
-        # Зарплата
+        # Форматируем строку - ВАЖНО: ссылка в названии!
+        vacancy_text = f"<b>{i}. <a href='{external_url}'>{vacancy_title}</a></b>\n\n"
+        
+        # Компания отдельной строкой
+        employer = vacancy.get('employer')
+        if employer and employer.strip():
+            vacancy_text += f"{emojis.get('company', '🏢')} {employer}\n"
+        
+        # Зарплата с частотой выплат
         salary_display = format_salary_display(vacancy)
-        if salary_display:
-            vacancy_text += f"{emojis['salary']} <b>{salary_display}</b>\n"
+        vacancy_text += f"{emojis.get('salary', '💰')} {salary_display}\n"
         
         # График
-        if vacancy.get('schedule_name'):
-            vacancy_text += f"{emojis['schedule']} {vacancy['schedule_name']}\n"
+        schedule = vacancy.get('schedule_name')
+        if schedule and schedule.strip():
+            vacancy_text += f"{emojis.get('schedule', '🕒')} {schedule}\n"
         
         # Опыт
-        if vacancy.get('experience_name'):
-            vacancy_text += f"{emojis['experience']} {vacancy['experience_name']}\n"
+        experience = vacancy.get('experience_name')
+        if experience and experience.strip():
+            vacancy_text += f"{emojis.get('experience', '📊')} {experience}\n"
         
-        # Ссылка
-        vacancy_text += f"📌 <a href='{vacancy['external_url']}'>Подробнее на HH.ru</a>\n"
-        
+        # Разделитель между вакансиями (кроме последней)
         if i < len(vacancies):
-            vacancy_text += f"\n{emojis['divider']}\n\n"
+            vacancy_text += f"\n{emojis.get('divider', '---')}\n\n"
         
         vacancy_sections.append(vacancy_text)
     
     # Собираем пост
     post_text = header + "".join(vacancy_sections)
     
-    # Улучшенный CTA для реферальной ссылки
-    footer = f"\n\n💡 <b>Хочешь работать на себя?</b>\n\n"
-    footer += "✅ Работай на себя — сам выбираешь график\n"
-    footer += "✅ Заработок от 1500₽ в день с первого дня\n"
-    footer += "✅ Выплаты ежедневно на карту\n"
-    footer += "✅ Работаешь в своём районе — без долгих поездок\n"
-    footer += "✅ Бонусы для новичков\n\n"
-    
-    # Реферальная ссылка с сильным CTA
+    # Улучшенный CTA (оставляем твой текущий, но можно доработать)
     referral_link = PUBLISH_CONFIG["formatting"].get("referral_link")
     if referral_link:
-        footer += f"🚀 <b><a href='{referral_link}'>Начать работать на себя →</a></b>\n"
+        footer = f"\n\n💡 <b>Хочешь работать на себя?</b>\n"
+        footer += "✅ Работай на себя — сам выбираешь график\n"
+        footer += "✅ Заработок от 1500₽ в день с первого дня\n"
+        footer += "✅ Выплаты ежедневно на карту\n"
+        footer += "✅ Работаешь в своём районе — без долгих поездок\n"
+        footer += "✅ Бонусы для новичков\n\n"
+        
+        footer += f"🚀 <a href='{referral_link}'><b>Начать работать на себя →</b></a>\n"
         footer += f"<i>Начни зарабатывать уже завтра!</i>"
+        
+        post_text += footer
     
-    post_text += footer
-    
-    # Проверяем длину сообщения (Telegram ограничение: 4096 символов)
+    # Проверяем длину сообщения
     if len(post_text) > 4096:
         logger.warning(f"Сообщение слишком длинное ({len(post_text)} символов), обрезаем...")
-        # Оставляем только первые 3 вакансии
-        return format_post_with_vacancies(vacancies[:3], city_name)
+        return format_post_with_vacancies(vacancies[:5], city_name)  # Оставляем только 5 вакансий
     
     return post_text, referral_link
 
