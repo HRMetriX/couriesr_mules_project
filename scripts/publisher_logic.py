@@ -55,7 +55,7 @@ if not logger_ready:
                 "employer": "✅",
                 "divider": "---",
             },
-            "referral_link": "https://ya.cc/8UiUqj",
+            "referral_link": "https://ya.cc/8UiUqj  ",
         }
     }
     
@@ -416,7 +416,7 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
     # Добавляем вакансии
     post_text += "".join(vacancy_sections)
     
-# Проверяем длину сообщения
+    # Проверяем длину сообщения
     if len(post_text) > 4096:
         logger.warning(f"Сообщение слишком длинное ({len(post_text)} символов), обрезаем...")
         return format_post_with_vacancies(vacancies[:5], city_name)  # Оставляем только 5 вакансий
