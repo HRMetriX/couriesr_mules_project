@@ -398,8 +398,9 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
         vacancy_sections.append(vacancy_text)
     
     # Собираем пост
-    post_text = header + 
-        # Улучшенный CTA (оставляем твой текущий, но можно доработать)
+    post_text = header + "".join(vacancy_sections)
+
+    # Улучшенный CTA (оставляем твой текущий, но можно доработать)
     referral_link = PUBLISH_CONFIG["formatting"].get("referral_link")
     if referral_link:
         footer = f"\n\n💡 <b>Хочешь работать на себя?</b>\n"
@@ -413,7 +414,6 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
         footer += f"<i>Начни зарабатывать уже завтра!</i>"
         
         post_text += footer
-        + "".join(vacancy_sections)
     
     # Проверяем длину сообщения
     if len(post_text) > 4096:
