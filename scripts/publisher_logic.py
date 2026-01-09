@@ -42,7 +42,7 @@ if not logger_ready:
             "currency": "RUR",
         },
         "publication": {
-            "vacancies_per_post": 5,
+            "vacancies_per_post": 10,
             "post_times_msk": ["09:00", "13:00", "19:00", "21:00"],
         },
         "formatting": {
@@ -126,7 +126,7 @@ def should_publish_now() -> bool:
 def get_vacancies_for_publication(
     supabase_client: Client,
     city_slug: str,
-    limit: int = 5
+    limit: int = 10
 ) -> List[Dict]:
     """
     Получает вакансии для публикации.
