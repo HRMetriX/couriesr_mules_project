@@ -393,7 +393,7 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
         
         # Разделитель между вакансиями (кроме последней)
         if i < len(vacancies):
-            vacancy_text += f"\n{emojis.get('divider', '---')}\n\n"
+            vacancy_text += f"\n{emojis.get('divider', '---')}\n"
         
         vacancy_sections.append(vacancy_text)
     
@@ -403,7 +403,7 @@ def format_post_with_vacancies(vacancies: List[Dict], city_name: str) -> Tuple[s
     # Добавляем CTA сразу после заголовка
     referral_link = PUBLISH_CONFIG["formatting"].get("referral_link")
     if referral_link:
-        cta = f"\n💡 <b>Хочешь работать на себя?</b>\n"
+        cta = f"\n💡 <b>Хочешь работать на себя?</b>\n\n"
         cta += "✅ Работай на себя — сам выбираешь график\n"
         cta += "✅ Заработок от 5000₽ в день с первого дня\n"
         cta += "✅ Выплаты ежедневно на карту\n"
