@@ -507,3 +507,30 @@ body {
 .text-center {
   text-align: center;
 }
+
+/* === HONEST INTRO === */
+.honest-intro {
+  padding: 1.8rem;
+  background: rgba(47, 54, 78, 0.04);
+  border-radius: 16px;
+  border-left: 4px solid var(--secondary);
+}
+
+.honest-intro h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--secondary);
+}
+
+.honest-intro p {
+  margin-bottom: 1rem;
+  line-height: 1.6;
+  font-size: 1.02rem;
+  color: var(--text-dark);
+}
+
+.honest-intro p:last-child {
+  margin-bottom: 0;
+  font-weight: 600;
+  color: var(--accent);
+}
