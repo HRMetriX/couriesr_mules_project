@@ -179,3 +179,112 @@ body {
     font-size: 1.1rem;
   }
 }
+
+
+/* === ELIGIBILITY SECTION === */
+.eligibility {
+  margin-bottom: 3rem;
+}
+
+.section-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--secondary);
+  margin-bottom: 0.8rem;
+}
+
+.section-intro {
+  font-size: 1.05rem;
+  color: var(--text-light);
+  margin-bottom: 1.8rem;
+  max-width: 700px;
+}
+
+.eligibility-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.eligibility-card {
+  border-radius: 16px;
+  padding: 1.6rem;
+  transition: all 0.3s ease;
+}
+
+.can {
+  background: rgba(40, 167, 69, 0.06);
+  border: 1px solid rgba(40, 167, 69, 0.2);
+}
+
+.cannot {
+  background: rgba(237, 25, 37, 0.05);
+  border: 1px solid rgba(237, 25, 37, 0.2);
+}
+
+.eligibility-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eligibility-card ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.eligibility-card li {
+  margin-bottom: 0.7rem;
+  position: relative;
+  padding-left: 1.3rem;
+  font-size: 1rem;
+}
+
+/* Иконки вместо точек */
+.can li::before {
+  content: "✓";
+  color: #28a745;
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 1.1rem;
+}
+
+.cannot li::before {
+  content: "✗";
+  color: var(--accent);
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 1.1rem;
+}
+
+.note-box {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.4rem;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+}
+
+.note-box strong {
+  color: var(--secondary);
+}
+
+/* HOVER EFFECTS */
+.eligibility-card.can:hover {
+  border-color: #28a745;
+  box-shadow: 0 5px 15px rgba(40, 167, 69, 0.1);
+}
+
+.eligibility-card.cannot:hover {
+  border-color: var(--accent);
+  box-shadow: 0 5px 15px rgba(237, 25, 37, 0.1);
+}
