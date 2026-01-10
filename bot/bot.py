@@ -1,4 +1,5 @@
 import logging
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -9,8 +10,10 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = "7334343315:AAH7SF5KNppwg_ntd-7pvIpet3h_NXN6xCM"
+# === ИСПРАВЛЕНО: токен из переменной окружения ===
+BOT_TOKEN = os.getenv("TG_HELPER_BOT_TOKEN")
 
+# === ИСПРАВЛЕНО: убраны пробелы в URL ===
 GUIDE_URL = "https://hrmetrix.github.io/courier_ecosystem/"
 REFERRAL_LINK = "https://ya.cc/8UiUqj"
 AUTHOR_CONTACT = "@OlegBorisov_hr"
@@ -27,7 +30,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🚀 Начать регистрацию", callback_data="register")],
@@ -40,7 +42,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Выбери, что тебе нужно:",
         reply_markup=reply_markup
     )
-
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -82,6 +83,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         city_key = query.data.replace("city_", "")
         city = CITIES[city_key]
         channel_name = city["channel"][1:]  # убираем @
+        # === ИСПРАВЛЕНО: убраны пробелы в ссылке ===
         text = (
             f"Подпишись на канал «Работа курьером | {city['name']}»:\n"
             f'<a href="https://t.me/{channel_name}">Открыть канал</a>\n\n'
@@ -90,13 +92,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(text=text, parse_mode="HTML")
 
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Привет! Если у тебя вопрос по работе курьером — напиши мне напрямую: {AUTHOR_CONTACT}\n\n"
         "Или воспользуйся командой /start, чтобы выбрать нужную помощь."
     )
-
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
@@ -104,7 +104,6 @@ def main():
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.run_polling()
-
 
 if __name__ == "__main__":
     main()
