@@ -411,3 +411,83 @@ body {
     font-size: 1.2rem !important;
   }
 }
+
+/* === TIPS GRID — УЛУЧШЕННЫЙ === */
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.6rem;
+  margin: 1.8rem 0;
+}
+
+.tip-category {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.6rem;
+  transition: all 0.3s ease;
+}
+
+.tip-category:hover {
+  border-color: var(--primary);
+  box-shadow: 0 5px 15px rgba(255, 204, 51, 0.1);
+}
+
+.tip-category h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: var(--secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.tip-category ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.tip-category li {
+  margin-bottom: 0.9rem;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  position: relative;
+  padding-left: 1.3rem;
+}
+
+.tip-category li::before {
+  content: "•";
+  color: var(--primary);
+  position: absolute;
+  left: 0;
+  top: 0.2rem;
+  font-size: 1.1rem;
+}
+
+/* ИКОНКИ (эмодзи) */
+.tip-category h3::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  display: inline-block;
+  margin-right: 0.5rem;
+  text-align: center;
+  line-height: 1;
+}
+
+.tip-category h3[data-icon="🎒"]::before { content: "🎒"; }
+.tip-category h3[data-icon="💧"]::before { content: "💧"; }
+.tip-category h3[data-icon="📍"]::before { content: "📍"; }
+.tip-category h3[data-icon="⚠️"]::before { content: "⚠️"; }
+
+/* Мобильная адаптация */
+@media (max-width: 600px) {
+  .tips-grid {
+    grid-template-columns: 1fr;
+  }
+  .tip-category {
+    padding: 1.4rem;
+  }
+}
