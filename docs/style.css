@@ -288,3 +288,11 @@ body {
   border-color: var(--accent);
   box-shadow: 0 5px 15px rgba(237, 25, 37, 0.1);
 }
+
+.content-card {
+  background: white;
+  border-radius: 20px;
+  padding: 2.2rem;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+  margin-bottom: 2.5rem;
+}
