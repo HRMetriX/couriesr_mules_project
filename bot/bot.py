@@ -10,13 +10,11 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from aiohttp import web
-import threading
 
 # === КОНФИГУРАЦИЯ ===
 BOT_TOKEN = os.getenv("TG_HELPER_BOT_TOKEN")
 if not BOT_TOKEN:
-    logging.error("Токен бота не найден! Установите переменную TG_HELPER_BOT_TOKEN")
+    logging.error("Токен бота не найден! Установите TG_HELPER_BOT_TOKEN")
     exit(1)
 
 GUIDE_URL = "https://hrmetrix.github.io/courier_ecosystem/"
@@ -35,31 +33,8 @@ CITIES = {
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(),
-    ]
 )
 logger = logging.getLogger(__name__)
-
-# === ВЕБ-СЕРВЕР ДЛЯ RENDER ===
-async def health_check(request):
-    """Обработчик для проверки работоспособности от Render"""
-    logger.info("Health check received")
-    return web.Response(text="Bot is alive and healthy")
-
-def run_web_server():
-    """Запускает веб-сервер в отдельном потоке"""
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_get('/health', health_check)
-    
-    port = int(os.getenv("PORT", 8080))
-    logger.info(f"Starting web server on port {port}")
-    
-    try:
-        web.run_app(app, host='0.0.0.0', port=port)
-    except Exception as e:
-        logger.error(f"Web server error: {e}")
 
 # === ФУНКЦИИ БОТА ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -119,7 +94,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Подпишись на канал «Работа курьером | {city['name']}»:\n"
             f'<a href="https://t.me/{channel_name}">Открыть канал</a>\n\n'
             "Там ежедневно публикуются свежие вакансии и советы.\n\n"
-            f"Вопросы по каналу или работе? Пиши мне: {AUTHOR_CONTACT} — отвечу лично."
+            f"Вопросы по каналу или работу? Пиши мне: {AUTHOR_CONTACT} — отвечу лично."
         )
         await query.edit_message_text(text=text, parse_mode="HTML")
 
@@ -129,39 +104,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Или воспользуйся командой /start, чтобы выбрать нужную помощь."
     )
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик ошибок бота"""
-    logger.error(f"Exception while handling an update: {context.error}")
-
 # === ОСНОВНАЯ ФУНКЦИЯ ===
 def main():
     logger.info("Starting bot application...")
     
-    # Создаем приложение бота
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_error_handler(error_handler)
     
-    # Запускаем веб-сервер в отдельном потоке (для Render)
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
-    logger.info("Web server thread started")
-    
-    # Запускаем бота
     logger.info("Bot is starting polling...")
-    try:
-        application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-            close_loop=False  # Важно для работы с потоками
-        )
-    except Exception as e:
-        logger.error(f"Bot crashed: {e}")
-        raise
+    application.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES,
+    )
 
 if __name__ == "__main__":
     main()
