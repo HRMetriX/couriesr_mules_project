@@ -1,12 +1,11 @@
 services:
-  - type: web
+  - type: worker  # <-- ИЗМЕНИТЕ С "web" НА "worker"
     name: telegram-helper-bot
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt  # <-- убрали 'bot/'
+    buildCommand: pip install -r requirements.txt
     startCommand: python bot/bot.py
     envVars:
       - key: TG_HELPER_BOT_TOKEN
         sync: false
-    healthCheckPath: /health
-    autoDeploy: true
+    # УДАЛИТЕ healthCheckPath - он только для "web" сервисов
