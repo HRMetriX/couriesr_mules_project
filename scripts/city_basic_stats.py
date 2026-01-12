@@ -268,7 +268,10 @@ def generate_telegram_text(city_name: str, city_data: pd.DataFrame, today_date: 
         verdict_color = "🟡"
     
     telegram_text = f"""📊 Аналитика рынка вакансий
-📅 {today_date.strftime('%d.%m.%Y')}
+    
+📅 на 08:30 {today_date.strftime('%d.%m.%Y')}
+💡 Статистика за сегодня формируется на основе данных до 08:30 утра
+
 
 📈 Ключевые показатели:
 
