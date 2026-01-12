@@ -1,6 +1,5 @@
 import logging
 import os
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -10,7 +9,9 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from aiohttp import web
+from flask import Flask
+from threading import Thread
+import time
 
 # === КОНФИГУРАЦИЯ ===
 BOT_TOKEN = os.getenv("TG_HELPER_BOT_TOKEN")
@@ -37,10 +38,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
-async def health_check(request):
-    """Обработчик для health-check"""
-    return web.Response(text="Bot is alive")
+# === FLASK ДЛЯ HEALTH-CHECK ===
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/health')
+def health_check():
+    return "Bot is alive", 200
+
+def run_flask():
+    """Запускает Flask сервер в отдельном потоке"""
+    port = int(os.getenv("PORT", 8080))
+    logger.info(f"Starting Flask server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # === ФУНКЦИИ БОТА ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,49 +120,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Или воспользуйся командой /start, чтобы выбрать нужную помощь."
     )
 
-# === ОСНОВНАЯ ФУНКЦИЯ ===
-async def main():
-    """Запускает веб-сервер и бота"""
-    logger.info("Starting bot application...")
-    
-    # Создаем и настраиваем веб-сервер
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_get('/health', health_check)
-    
-    port = int(os.getenv("PORT", 8080))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logger.info(f"Web server started on port {port}")
-    
-    # Создаем приложение бота
+def start_bot():
+    """Запускает Telegram бота"""
+    logger.info("Starting Telegram bot...")
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Запускаем бота
-    logger.info("Bot is starting polling...")
-    await application.run_polling(
+    application.run_polling(
         drop_pending_updates=True,
         allowed_updates=Update.ALL_TYPES,
-        close_loop=False  # Важно: не закрывать event loop
     )
 
-if __name__ == "__main__":
-    # Создаем новый event loop вручную
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+# === ОСНОВНАЯ ФУНКЦИЯ ===
+def main():
+    logger.info("Starting bot application...")
     
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Bot crashed: {e}")
-        raise
-    finally:
-        if not loop.is_closed():
-            loop.close()
+    # Запускаем Flask в отдельном потоке (для health-check)
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Даем Flask время запуститься
+    time.sleep(2)
+    
+    # Запускаем бота в основном потоке
+    start_bot()
+
+if __name__ == "__main__":
+    main()
