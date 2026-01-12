@@ -24,15 +24,17 @@ jobs:
         pip install pandas matplotlib python-telegram-bot==22.5 supabase python-dateutil
 
     - name: Run city basic stats generator
-      working-directory: ./courier_ecosystem/scripts
+      run: |
+        ls -la
+        ls -la courier_ecosystem/
+        ls -la courier_ecosystem/scripts/
+        cd courier_ecosystem/scripts
+        pwd
+        python city_basic_stats.py
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-      run: |
-        pwd
-        ls -la
-        python city_basic_stats.py
 
     - name: Upload logs
       if: always()
