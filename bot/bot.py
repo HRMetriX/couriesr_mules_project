@@ -10,6 +10,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from aiohttp import web
+import threading
 
 # === КОНФИГУРАЦИЯ ===
 BOT_TOKEN = os.getenv("TG_HELPER_BOT_TOKEN")
@@ -36,7 +38,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# === ФУНКЦИИ БОТА ===
+# === ПРОСТОЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ===
+async def health_check(request):
+    """Обработчик для health-check"""
+    return web.Response(text="Bot is alive")
+
+async def start_web_server():
+    """Запускает веб-сервер для health-check"""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    port = int(os.getenv("PORT", 8080))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"Web server started on port {port}")
+    
+    # Бесконечное ожидание (сервер работает)
+    await asyncio.Event().wait()
+
+# === ФУНКЦИИ БОТА (оставляем ваши оригинальные функции) ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🚀 Начать регистрацию", callback_data="register")],
@@ -94,7 +117,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Подпишись на канал «Работа курьером | {city['name']}»:\n"
             f'<a href="https://t.me/{channel_name}">Открыть канал</a>\n\n'
             "Там ежедневно публикуются свежие вакансии и советы.\n\n"
-            f"Вопросы по каналу или работу? Пиши мне: {AUTHOR_CONTACT} — отвечу лично."
+            f"Вопросы по каналу или работе? Пиши мне: {AUTHOR_CONTACT} — отвечу лично."
         )
         await query.edit_message_text(text=text, parse_mode="HTML")
 
@@ -105,20 +128,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # === ОСНОВНАЯ ФУНКЦИЯ ===
-def main():
+async def main():
+    """Запускает и бота, и веб-сервер одновременно"""
     logger.info("Starting bot application...")
     
+    # Создаем приложение бота
     application = Application.builder().token(BOT_TOKEN).build()
     
+    # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("Bot is starting polling...")
-    application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES,
+    # Запускаем веб-сервер и бота параллельно
+    await asyncio.gather(
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+        ),
+        start_web_server()
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
