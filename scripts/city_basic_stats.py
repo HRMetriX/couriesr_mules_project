@@ -60,7 +60,7 @@ def load_data_from_supabase():
     
     return df
 
-def create_digest_image(city_name: str, city_data: pd.DataFrame, today_date: datetime):
+def create_digest_image(city_name: str, city_ pd.DataFrame, today_date: datetime):
     """Создание изображения дайджеста для конкретного города"""
     
     # Устанавливаем шрифты
@@ -93,7 +93,7 @@ def create_digest_image(city_name: str, city_data: pd.DataFrame, today_date: dat
     
     # СТАТИСТИКА ЗА НЕДЕЛЮ
     city_week = city_data[city_data['published_date'] >= week_start_date.date()]
-    city_salary_week = city_salary_data[city_salary_week['published_date'] >= week_start_date.date()]
+    city_salary_week = city_salary_data[city_data['published_date'] >= week_start_date.date()]  # ИСПРАВЛЕНО
     
     # ЗАРПЛАТНАЯ СТАТИСТИКА ЗА НЕДЕЛЮ
     weekly_salary_stats = []
@@ -203,7 +203,7 @@ def create_digest_image(city_name: str, city_data: pd.DataFrame, today_date: dat
     buf.seek(0)
     return buf
 
-def generate_telegram_text(city_name: str, city_data: pd.DataFrame, today_date: datetime):
+def generate_telegram_text(city_name: str, city_ pd.DataFrame, today_date: datetime):
     """Генерация текста дайджеста для Telegram"""
     
     # Используем исправленный фильтр для зарплат
@@ -232,7 +232,7 @@ def generate_telegram_text(city_name: str, city_data: pd.DataFrame, today_date: 
     
     # СТАТИСТИКА ЗА НЕДЕЛЮ
     city_week = city_data[city_data['published_date'] >= week_start_date.date()]
-    city_salary_week = city_salary_data[city_salary_week['published_date'] >= week_start_date.date()]
+    city_salary_week = city_salary_data[city_data['published_date'] >= week_start_date.date()]  # ИСПРАВЛЕНО
     
     # РАБОТОДАТЕЛИ
     top_employers_today = city_today['employer'].value_counts().head(3)
