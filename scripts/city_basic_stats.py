@@ -285,6 +285,7 @@ def generate_telegram_text(city_name: str, city_data: pd.DataFrame, today_date: 
 ✓ 75% получают до: {salary_today['salary_to_net'].quantile(0.75):,.0f} ₽
 
 🏢 ТОП-3 работодателей:
+
 """
     
     for i, (employer, count) in enumerate(top_employers_today.items(), 1):
