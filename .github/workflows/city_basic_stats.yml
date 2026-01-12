@@ -26,11 +26,7 @@ jobs:
     - name: Run city basic stats generator
       run: |
         ls -la
-        ls -la courier_ecosystem/
-        ls -la courier_ecosystem/scripts/
-        cd courier_ecosystem/scripts
-        pwd
-        python city_basic_stats.py
+        python scripts/city_basic_stats.py
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
