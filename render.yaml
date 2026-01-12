@@ -1,5 +1,5 @@
 services:
-  - type: worker  # <-- ИЗМЕНИТЕ С "web" НА "worker"
+  - type: web  # Оставляем web сервис!
     name: telegram-helper-bot
     env: python
     plan: free
@@ -8,4 +8,5 @@ services:
     envVars:
       - key: TG_HELPER_BOT_TOKEN
         sync: false
-    # УДАЛИТЕ healthCheckPath - он только для "web" сервисов
+    healthCheckPath: /health  # Оставляем!
+    autoDeploy: true
