@@ -22,8 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         echo "📦 Устанавливаем зависимости..."
-        cd courier_ecosystem/scripts
-        pip install -r ../../requirements.txt
+        pip install -r requirements.txt
         echo "✅ Зависимости установлены"
     
     - name: Run monthly analytics
@@ -36,13 +35,14 @@ jobs:
         echo "📅 Дата: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "🏙️ Запуск всех городов"
         
-        cd courier_ecosystem/scripts
+        # Переходим в директорию со скриптом
+        cd scripts
         
         echo "🔧 Проверяем наличие скрипта..."
-        ls -la monthly_analytics.py || echo "❌ Скрипт не найден"
+        ls -la monthly_analytics.py || { echo "❌ Скрипт не найден"; exit 1; }
         
         echo "📊 Запускаем аналитику..."
-        python monthly_analytics.py
+        python -u monthly_analytics.py
         
         EXIT_CODE=$?
         
@@ -58,12 +58,10 @@ jobs:
       run: |
         echo "🎉 Месячный отчет выполнен успешно!"
         echo "📅 Время: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "🔗 GitHub Run ID: ${{ github.run_id }}"
     
     - name: Failure log
       if: failure()
       run: |
         echo "💥 Месячный отчет завершился с ошибкой!"
         echo "📅 Время: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "🔗 GitHub Run ID: ${{ github.run_id }}"
         echo "⚠️ Проверьте логи выше для деталей"
