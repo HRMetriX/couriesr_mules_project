@@ -6,7 +6,7 @@ PUBLISH_CONFIG = {
     # Критерии отбора вакансий
     "criteria": {
         "max_vacancy_age_days": 30,
-        "max_parsed_age_days": 7,
+        "max_parsed_age_days": 14,
         "currency": "RUR",
       #  "min_salary_net": 70000,
     },
