@@ -189,12 +189,12 @@ def get_vacancies_for_publication(
         # Объединяем
         selected_vacancies = selected_with_salary + selected_without_salary
 
-        # Сортировка по salary_to_net DESC
-        # Вакансии без зарплаты (None) окажутся в конце
-        selected_vacancies.sort(key=lambda x: x.get('salary_to_net', float('-inf')), reverse=True)
+        # Сортировка: сначала вакансии с зарплатой, отсортированные по убыванию, потом без зарплаты
+        selected_with_salary.sort(key=lambda x: x.get('salary_to_net', 0), reverse=True)
+        final_sorted_list = selected_with_salary + selected_without_salary
 
         # Ограничиваем по количеству
-        final_vacancies = selected_vacancies[:target_count]
+        final_vacancies = final_sorted_list[:target_count]
 
         logger.info(f"  - Выбрано для публикации: {len(final_vacancies)}")
 
