@@ -134,12 +134,12 @@ def get_vacancies_for_publication(
     Получает вакансии для публикации.
 
     НОВАЯ ЛОГИКА:
-    1. Берем вакансии, опубликованные на HH (first_seen_in_db) не позднее N дней назад.
-    2. Разделяем на вакансии с зарплатой (salary_to_net not null) и без.
-    3. Случайно выбираем из каждой группы.
-    4. Объединяем, сортируем по зарплате (desc), ограничиваем по количеству.
+    1. Пытаемся найти вакансии по основным критериям (новые за N дней, RUR, неопубликованные).
+    2. Если подходящих мало (< target_count), используем fallback:
+       - Берём самые свежие неопубликованные вакансии в городе.
+       - Сначала с зарплатой, потом без, до достижения target_count или исчерпания запаса.
     """
-    # Рассчитываем даты-ограничители
+    # Рассчитываем даты-ограничители для основного запроса
     now = datetime.now(timezone.utc)
     max_vacancy_date = now - timedelta(days=PUBLISH_CONFIG["criteria"]["max_vacancy_age_days"])
 
@@ -149,11 +149,10 @@ def get_vacancies_for_publication(
     logger.info(f"  - currency = '{PUBLISH_CONFIG['criteria']['currency']}'")
     logger.info(f"  - is_posted = FALSE")
 
-    # Берем вакансии с учётом критериев
+    # --- ОСНОВНОЙ ЗАПРОС ---
     initial_limit = target_count * 5  # Берем с запасом, чтобы точно набрать после выборки
 
-    # Строим запрос
-    query = (
+    query_main = (
         supabase_client
         .table("vacancies")
         .select("*")
@@ -164,58 +163,123 @@ def get_vacancies_for_publication(
         # Сортировка не нужна, так как будет случайный выбор
     )
 
-    # Выполняем
     try:
-        response = query.execute()
-        logger.info(f"Найдено {len(response.data)} доступных вакансий для {city_slug} до фильтрации по зарплате")
-
-        if not response.data:
-            logger.warning(f"Нет доступных вакансий для {city_slug}")
-            return []
+        response_main = query_main.execute()
+        logger.info(f"Найдено {len(response_main.data)} доступных вакансий для {city_slug} по основным критериям")
 
         # --- НОВАЯ ЛОГИКА ---
-        # Разделяем вакансии
-        with_salary = [v for v in response.data if v.get('salary_to_net') is not None]
-        without_salary = [v for v in response.data if v.get('salary_to_net') is None]
+        # Разделяем вакансии из основного запроса
+        with_salary_main = [v for v in response_main.data if v.get('salary_to_net') is not None]
+        without_salary_main = [v for v in response_main.data if v.get('salary_to_net') is None]
 
-        logger.info(f"  - С зарплатой: {len(with_salary)}")
-        logger.info(f"  - Без зарплаты: {len(without_salary)}")
+        logger.info(f"  - Основные: С зарплатой: {len(with_salary_main)}, Без зарплаты: {len(without_salary_main)}")
 
-        # Случайно выбираем из каждой группы
-        selected_with_salary = random.sample(with_salary, min(target_count, len(with_salary)))
-        remaining_slots = target_count - len(selected_with_salary)
-        selected_without_salary = random.sample(without_salary, min(remaining_slots, len(without_salary)))
+        # Случайно выбираем из каждой группы основного запроса
+        selected_with_salary_main = random.sample(with_salary_main, min(target_count, len(with_salary_main)))
+        remaining_slots_after_main = target_count - len(selected_with_salary_main)
+        selected_without_salary_main = random.sample(without_salary_main, min(remaining_slots_after_main, len(without_salary_main)))
 
-        # Объединяем
-        selected_vacancies = selected_with_salary + selected_without_salary
+        # Объединяем результаты основного запроса
+        selected_vacancies_main = selected_with_salary_main + selected_without_salary_main
 
-        # Сортировка: сначала вакансии с зарплатой, отсортированные по убыванию, потом без зарплаты
-        selected_with_salary.sort(key=lambda x: x.get('salary_to_net', 0), reverse=True)
-        final_sorted_list = selected_with_salary + selected_without_salary
+        logger.info(f"  - Выбрано из основного: {len(selected_vacancies_main)}")
+
+        # Проверяем, достигли ли цели
+        current_selection_count = len(selected_vacancies_main)
+
+        if current_selection_count < target_count:
+            logger.info(f"  - Цель {target_count} не достигнута ({current_selection_count}), запускаю fallback...")
+            slots_needed = target_count - current_selection_count
+
+            # --- FALLBACK ЗАПРОС ---
+            # Берём все неопубликованные вакансии в городе, отсортированные по дате (свежие первые)
+            # Исключаем уже выбранные вакансии из основного запроса
+            already_selected_ids = {v['id'] for v in selected_vacancies_main}
+
+            query_fallback = (
+                supabase_client
+                .table("vacancies")
+                .select("*")
+                .eq("city_slug", city_slug)
+                .eq("is_posted", False)
+                .neq("currency", PUBLISH_CONFIG["criteria"]["currency"]) # Исключаем уже отфильтрованные по валюте из основного
+                # или .not_.in_("id", list(already_selected_ids)) # Можно добавить, если нужно исключить ID
+                .order("first_seen_in_db", desc=True) # Сортировка по дате, свежие первые
+                .limit(slots_needed * 5) # С запасом
+            )
+
+            # Выполняем fallback-запрос
+            response_fallback = query_fallback.execute()
+            logger.info(f"  - Fallback: найдено {len(response_fallback.data)} потенциальных вакансий")
+
+            # Отфильтруем по ID, если нужно исключить основной отбор
+            fallback_filtered_by_id = [v for v in response_fallback.data if v['id'] not in already_selected_ids]
+
+            # Разделяем fallback-вакансии
+            with_salary_fb = [v for v in fallback_filtered_by_id if v.get('salary_to_net') is not None]
+            without_salary_fb = [v for v in fallback_filtered_by_id if v.get('salary_to_net') is None]
+
+            logger.info(f"  - Fallback: С зарплатой: {len(with_salary_fb)}, Без зарплаты: {len(without_salary_fb)}")
+
+            # Случайно выбираем из fallback, с приоритетом "с зарплатой"
+            selected_with_salary_fb = random.sample(with_salary_fb, min(slots_needed, len(with_salary_fb)))
+            remaining_slots_after_fb_salary = slots_needed - len(selected_with_salary_fb)
+            selected_without_salary_fb = random.sample(without_salary_fb, min(remaining_slots_after_fb_salary, len(without_salary_fb)))
+
+            # Объединяем результаты fallback
+            selected_vacancies_fallback = selected_with_salary_fb + selected_without_salary_fb
+
+            # Объединяем основной и fallback результаты
+            final_vacancies = selected_vacancies_main + selected_vacancies_fallback
+
+            logger.info(f"  - Fallback добавил: {len(selected_vacancies_fallback)}")
+            logger.info(f"  - Всего выбрано с fallback: {len(final_vacancies)}")
+
+        else:
+            # Цель достигнута на основном запросе
+            final_vacancies = selected_vacancies_main
+            logger.info(f"  - Цель {target_count} достигнута на основном запросе.")
+
+
+        # --- Сортировка итогового списка ---
+        # Сортировка: сначала вакансии с зарплатой (основные), отсортированные по убыванию, потом без зарплаты (основные),
+        # затем с зарплатой (fallback), отсортированные по убыванию, и без зарплаты (fallback).
+        # Но для случайности, можно перемешать весь список, или оставить как есть.
+        # Если важна сортировка по свежести в рамках fallback:
+        selected_with_salary_main.sort(key=lambda x: x.get('salary_to_net', 0), reverse=True)
+        selected_with_salary_fb.sort(key=lambda x: x.get('salary_to_net', 0), reverse=True)
+        # Сортировка по дате для fallback вакансий (свежие первые)
+        selected_with_salary_fb.sort(key=lambda x: x.get('first_seen_in_db', ''), reverse=True)
+        selected_without_salary_fb.sort(key=lambda x: x.get('first_seen_in_db', ''), reverse=True)
+
+        # Финальный порядок: основные (с/без зп), fallback (с/без зп)
+        final_sorted_list = (selected_with_salary_main + selected_without_salary_main +
+                             selected_with_salary_fb + selected_without_salary_fb)
 
         # Ограничиваем по количеству
-        final_vacancies = final_sorted_list[:target_count]
+        final_vacancies_limited = final_sorted_list[:target_count]
 
-        logger.info(f"  - Выбрано для публикации: {len(final_vacancies)}")
+        logger.info(f"  - Итого выбрано для публикации: {len(final_vacancies_limited)}")
 
         # Итоговая статистика
         companies = {}
-        for v in final_vacancies:
+        for v in final_vacancies_limited:
              employer = v.get('employer', 'Не указано')
              companies[employer] = companies.get(employer, 0) + 1
 
         logger.info(f"ИТОГ для {city_slug}:")
-        logger.info(f"  - Всего вакансий для публикации: {len(final_vacancies)}")
+        logger.info(f"  - Всего вакансий для публикации: {len(final_vacancies_limited)}")
         logger.info(f"  - Уникальных компаний: {len(companies)}")
-        logger.info(f"  - Распределение по компаниям (первые 5): {dict(list(companies.items())[:5])}") # Показываем первые 5
+        logger.info(f"  - Распределение по компаниям (первые 5): {dict(list(companies.items())[:5])}")
 
-        return final_vacancies
+        return final_vacancies_limited
 
     except Exception as e:
         logger.error(f"Ошибка при запросе вакансий для {city_slug}: {str(e)}")
         import traceback
         traceback.print_exc()
         return []
+
 
 
 def format_salary_display(vacancy: Dict) -> str:
